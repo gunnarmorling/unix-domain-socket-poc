@@ -13,7 +13,7 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package io.netty.channel.socket.nio;
+package dev.morling.demos.uds;
 
 import static io.netty.channel.internal.ChannelUtils.MAX_BYTES_PER_GATHERING_WRITE_ATTEMPTED_LOW_THRESHOLD;
 
@@ -54,8 +54,8 @@ import io.netty.util.internal.logging.InternalLoggerFactory;
 /**
  * {@link io.netty.channel.socket.SocketChannel} which uses NIO selector based implementation.
  */
-public class NioSocketChannel extends AbstractNioByteChannel implements io.netty.channel.socket.SocketChannel {
-    private static final InternalLogger logger = InternalLoggerFactory.getInstance(NioSocketChannel.class);
+public class UnixDomainSocketChannel extends AbstractNioByteChannel implements io.netty.channel.socket.SocketChannel {
+    private static final InternalLogger logger = InternalLoggerFactory.getInstance(UnixDomainSocketChannel.class);
     private static final SelectorProvider DEFAULT_SELECTOR_PROVIDER = SelectorProvider.provider();
 
     private static SocketChannel newSocket(SelectorProvider provider) {
@@ -74,24 +74,28 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
     private final SocketChannelConfig config;
 
+    private volatile boolean inputShutdown = false;
+
+    private volatile boolean outputShutdown = false;
+
     /**
      * Create a new instance
      */
-    public NioSocketChannel() {
+    public UnixDomainSocketChannel() {
         this(DEFAULT_SELECTOR_PROVIDER);
     }
 
     /**
      * Create a new instance using the given {@link SelectorProvider}.
      */
-    public NioSocketChannel(SelectorProvider provider) {
+    public UnixDomainSocketChannel(SelectorProvider provider) {
         this(newSocket(provider));
     }
 
     /**
      * Create a new instance using the given {@link SocketChannel}.
      */
-    public NioSocketChannel(SocketChannel socket) {
+    public UnixDomainSocketChannel(SocketChannel socket) {
         this(null, socket);
     }
 
@@ -101,9 +105,9 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
      * @param parent    the {@link Channel} which created this instance or {@code null} if it was created by the user
      * @param socket    the {@link SocketChannel} which will be used
      */
-    public NioSocketChannel(Channel parent, SocketChannel socket) {
+    public UnixDomainSocketChannel(Channel parent, SocketChannel socket) {
         super(parent, socket);
-        config = new NioSocketChannelConfig(this, socket.socket());
+        config = new NioSocketChannelConfig(this, new Socket()); // socket.socket());
     }
 
     @Override
@@ -129,18 +133,17 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
     @Override
     public boolean isOutputShutdown() {
-        return javaChannel().socket().isOutputShutdown() || !isActive();
+        return outputShutdown || !isActive();
     }
 
     @Override
     public boolean isInputShutdown() {
-        return javaChannel().socket().isInputShutdown() || !isActive();
+        return inputShutdown || !isActive();
     }
 
     @Override
     public boolean isShutdown() {
-        Socket socket = javaChannel().socket();
-        return socket.isInputShutdown() && socket.isOutputShutdown() || !isActive();
+        return isInputShutdown() && isOutputShutdown() || !isActive();
     }
 
     @Override
@@ -162,6 +165,8 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         } else {
             javaChannel().socket().shutdownOutput();
         }
+
+        outputShutdown = true;
     }
 
     @Override
@@ -279,6 +284,8 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         } else {
             javaChannel().socket().shutdownInput();
         }
+
+        inputShutdown = true;
     }
 
     @Override
@@ -466,7 +473,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
     private final class NioSocketChannelConfig extends DefaultSocketChannelConfig {
         private volatile int maxBytesPerGatheringWrite = Integer.MAX_VALUE;
-        private NioSocketChannelConfig(NioSocketChannel channel, Socket javaSocket) {
+        private NioSocketChannelConfig(UnixDomainSocketChannel channel, Socket javaSocket) {
             super(channel, javaSocket);
             calculateMaxBytesPerGatheringWrite();
         }
@@ -485,25 +492,25 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
         @Override
         public <T> boolean setOption(ChannelOption<T> option, T value) {
-            if (PlatformDependent.javaVersion() >= 7 && option instanceof NioChannelOption) {
-                return NioChannelOption.setOption(jdkChannel(), (NioChannelOption<T>) option, value);
-            }
+            //if (PlatformDependent.javaVersion() >= 7 && option instanceof NioChannelOption) {
+                //return NioChannelOption.setOption(jdkChannel(), (NioChannelOption<T>) option, value);
+            //}
             return super.setOption(option, value);
         }
 
         @Override
         public <T> T getOption(ChannelOption<T> option) {
-            if (PlatformDependent.javaVersion() >= 7 && option instanceof NioChannelOption) {
-                return NioChannelOption.getOption(jdkChannel(), (NioChannelOption<T>) option);
-            }
+            //if (PlatformDependent.javaVersion() >= 7 && option instanceof NioChannelOption) {
+              //  return NioChannelOption.getOption(jdkChannel(), (NioChannelOption<T>) option);
+            //}
             return super.getOption(option);
         }
 
         @Override
         public Map<ChannelOption<?>, Object> getOptions() {
-            if (PlatformDependent.javaVersion() >= 7) {
-                return getOptions(super.getOptions(), NioChannelOption.getOptions(jdkChannel()));
-            }
+            // if (PlatformDependent.javaVersion() >= 7) {
+             //    return getOptions(super.getOptions(), NioChannelOption.getOptions(jdkChannel()));
+            // }
             return super.getOptions();
         }
 
@@ -524,7 +531,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         }
 
         private SocketChannel jdkChannel() {
-            return ((NioSocketChannel) channel).javaChannel();
+            return ((UnixDomainSocketChannel) channel).javaChannel();
         }
     }
 }
